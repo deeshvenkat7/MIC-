@@ -1,0 +1,329 @@
+*&---------------------------------------------------------------------*
+*& Report ZSD_INVOICE
+*&---------------------------------------------------------------------*
+*& Created on     : 24/11/19
+*& Title          : Invoice Printout
+*& Developed by   : Dinesh V
+*& Functional     : Jayakumar V
+*& Package        : Z001
+*& TR No.         : MSDK900162
+*& TR Description : T:ABAP:SD-INVOICE_PRINTOUT-DV
+*&---------------------------------------------------------------------*
+REPORT zsd_invoice.
+
+TABLES : nast.
+*&---------------------------------------------------------------------*
+*& TYPES DECLARATION
+*&---------------------------------------------------------------------*
+TYPES : BEGIN OF ty_prcd,
+          kherk TYPE kherk,
+          knumv TYPE knumv,
+          kbetr TYPE kbetr,
+          kwert TYPE kwert,
+          kschl TYPE kschl,
+          kposn TYPE kposn,
+        END OF ty_prcd.
+TYPES : BEGIN OF ty_vbrk,
+          knumv TYPE knumv,
+        END OF ty_vbrk.
+
+*&---------------------------------------------------------------------*
+*& DATA DECLARATION
+*&---------------------------------------------------------------------*
+DATA : it_header      TYPE TABLE OF zinvoice_header,
+       wa_header      TYPE zinvoice_header,
+       it_item        TYPE TABLE OF zinvoice_item,
+       it_header_date TYPE TABLE OF zinvoice_header_date,
+       it_vbrk        TYPE TABLE OF ty_vbrk,
+       wa_vbrk        TYPE ty_vbrk,
+       it_cal         TYPE TABLE OF zst_calc,
+       wa_cal         TYPE zst_calc,
+       it_prcd        TYPE TABLE OF ty_prcd,
+       wa_prcd        TYPE ty_prcd,
+       it_del         TYPE TABLE OF zst_del_date,
+       it_item_final  TYPE TABLE OF zst_item_final,
+       wa_item_final  TYPE zst_item_final,
+       wa_item        TYPE zinvoice_item,
+       wa_final       TYPE zst_amt_final,
+       lv_total       TYPE netwr,
+       lv_final       TYPE netwr,
+       lv_curr_unit   TYPE waerk,
+       lv_vat         TYPE netwr.
+DATA : fp_outputparams TYPE sfpoutputparams,
+       fm_name         TYPE funcname,
+       fp_docparams    TYPE sfpdocparams,
+       fp_output       TYPE sfpjoboutput,
+       fp_name         TYPE fpname VALUE 'ZINVOICE_FORM'.
+*&---------------------------------------------------------------------*
+*& Text Elements
+*&---------------------------------------------------------------------*
+
+DATA : lv_cust_no TYPE string.
+lv_cust_no = TEXT-001.  " Customer No.
+DATA : lv_po_box TYPE string.
+lv_po_box = TEXT-002. " Post Box No.
+DATA : lv_vat_txt TYPE string.
+lv_vat_txt = TEXT-003. " VAT No.
+DATA : lv_tel TYPE string.
+lv_tel = TEXT-004. " Tel
+DATA : lv_fax TYPE string.
+lv_fax = TEXT-005. "Fax
+**************************************************
+DATA: it_sp_temp TYPE TABLE OF zst_cust_add,
+      wa_sp_temp TYPE zst_cust_add.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1.
+  PARAMETERS: p_vbeln TYPE vbrp-vbeln.
+SELECTION-SCREEN: END OF BLOCK b1.
+
+FORM entry USING return_code us_screen.
+  p_vbeln = nast-objky.
+
+CALL METHOD zcl_sd_invoice_printout=>get_it_tab
+  EXPORTING
+    i_mandt        = sy-mandt
+    p_vbeln        = p_vbeln
+  IMPORTING
+    it_header      = it_header
+    it_item        = it_item
+    it_header_date = it_header_date
+    it_vbrk        = it_vbrk
+    it_prcd        = it_prcd
+    it_del         = it_del.
+
+*&---------------------------------------------------------------------*
+*& Concatenating Customer Address in a string
+*&---------------------------------------------------------------------*
+IF it_header IS NOT INITIAL.
+  READ TABLE it_header INTO wa_header INDEX 1.
+  IF wa_header-kunnr IS NOT INITIAL.
+    wa_sp_temp-zfield = lv_cust_no && ' ' && wa_header-kunnr && ','.
+    APPEND wa_sp_temp TO it_sp_temp.
+    CLEAR : wa_sp_temp.
+  ENDIF.
+  IF wa_header-name IS NOT INITIAL.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && wa_header-name && ','.
+    APPEND wa_sp_temp TO it_sp_temp.
+    CLEAR : wa_sp_temp.
+  ENDIF.
+
+  IF wa_header-house_num1 IS NOT INITIAL AND wa_sp_temp-zfield IS NOT INITIAL.
+    CONCATENATE wa_sp_temp-zfield wa_header-house_num1 INTO wa_sp_temp-zfield SEPARATED BY ', '.
+  ELSEIF wa_header-house_num1 IS NOT INITIAL AND wa_sp_temp-zfield IS  INITIAL.
+    wa_sp_temp-zfield = wa_header-house_num1.
+  ENDIF.
+
+  IF wa_header-street IS NOT INITIAL AND wa_sp_temp-zfield IS NOT INITIAL.
+*CONCATENATE wa_sp_temp-zfield wa_header-street into wa_sp_temp-zfield SEPARATED BY ', '.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && ',' && wa_header-street && ','.
+  ELSEIF wa_header-street IS NOT INITIAL AND wa_sp_temp-zfield IS  INITIAL.
+    wa_sp_temp-zfield = wa_header-street.
+  ENDIF.
+
+  IF wa_sp_temp-zfield IS NOT INITIAL.
+    APPEND wa_sp_temp TO it_sp_temp.
+    CLEAR : wa_sp_temp.
+  ENDIF.
+
+
+  IF wa_header-po_box IS NOT INITIAL.
+*CONCATENATE 'PO Box:' wa_header-po_box INTO wa_sp_temp-zfield SEPARATED BY.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && lv_po_box && ' '&& wa_header-po_box && ','.
+    APPEND wa_sp_temp TO it_sp_temp.
+    CLEAR : wa_sp_temp.
+  ENDIF.
+
+  IF wa_header-city1 IS NOT INITIAL AND wa_sp_temp-zfield IS NOT INITIAL.
+    CONCATENATE wa_sp_temp-zfield wa_header-city1 INTO wa_sp_temp-zfield SEPARATED BY ', '.
+  ELSEIF wa_header-city1 IS NOT INITIAL AND wa_sp_temp-zfield IS INITIAL.
+    wa_sp_temp-zfield = wa_header-city1.
+  ENDIF.
+
+  IF wa_header-landx IS NOT INITIAL AND wa_sp_temp-zfield IS NOT INITIAL.
+    CONCATENATE wa_sp_temp-zfield wa_header-landx INTO wa_sp_temp-zfield SEPARATED BY ', '.
+  ELSEIF wa_header-landx IS NOT INITIAL AND wa_sp_temp-zfield IS INITIAL.
+    wa_sp_temp-zfield = wa_header-landx.
+  ENDIF.
+
+  IF wa_header-post_code1 IS NOT INITIAL AND wa_sp_temp-zfield IS NOT INITIAL.
+*CONCATENATE wa_sp_temp-zfield wa_header-post_code1 into wa_sp_temp-zfield SEPARATED BY ', '.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && ',' && wa_header-post_code1 && '.'.
+
+  ELSEIF wa_header-post_code1 IS NOT INITIAL AND wa_sp_temp-zfield IS INITIAL.
+    wa_sp_temp-zfield = wa_header-post_code1.
+  ENDIF.
+
+  IF wa_sp_temp-zfield IS NOT INITIAL.
+    APPEND wa_sp_temp TO it_sp_temp.
+    CLEAR : wa_sp_temp.
+  ENDIF.
+
+
+  IF wa_header-tel_number IS NOT INITIAL AND wa_header-tel_extens IS NOT INITIAL.
+*CONCATENATE 'PO Box:' wa_header-po_box INTO wa_sp_temp-zfield SEPARATED BY.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && lv_tel && ' ' && wa_header-tel_number && '-' && wa_header-tel_extens.
+
+  ELSEIF wa_header-tel_number IS NOT INITIAL AND wa_header-tel_extens IS INITIAL.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && lv_tel && ' ' && wa_header-tel_number.
+  ENDIF.
+  APPEND wa_sp_temp TO it_sp_temp.
+  CLEAR : wa_sp_temp.
+
+  IF wa_header-fax_number IS NOT INITIAL AND wa_header-fax_extens IS NOT INITIAL.
+*CONCATENATE 'PO Box:' wa_header-po_box INTO wa_sp_temp-zfield SEPARATED BY.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && lv_fax && ' ' && wa_header-fax_number && '-' && wa_header-fax_extens.
+
+  ELSEIF wa_header-tel_number IS NOT INITIAL AND wa_header-tel_extens IS INITIAL.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && lv_fax && ' ' && wa_header-fax_number.
+  ENDIF.
+  APPEND wa_sp_temp TO it_sp_temp.
+  CLEAR : wa_sp_temp.
+
+  IF wa_header-stceg IS NOT INITIAL.
+    wa_sp_temp-zfield = wa_sp_temp-zfield && lv_vat_txt && ' ' && wa_header-stceg.
+    APPEND wa_sp_temp TO it_sp_temp.
+    CLEAR : wa_sp_temp.
+  ENDIF.
+
+ENDIF.
+
+
+IF it_item IS NOT INITIAL.
+  LOOP AT it_item INTO wa_item.
+    wa_item_final-vbeln = wa_item-vbeln.
+    wa_item_final-posnr = wa_item-posnr.
+    wa_item_final-matnr = wa_item-matnr.
+    wa_item_final-arktx = wa_item-arktx.
+*    SHIFT wa_item_final-posnr LEFT DELETING LEADING '0'.
+*    CONCATENATE wa_item-matnr wa_item-arktx INTO wa_item_final-matnr SEPARATED BY space.
+*    SHIFT wa_item_final-matnr LEFT DELETING LEADING '0'.
+    wa_item_final-fkimg = wa_item-fkimg.
+    wa_item_final-vrkme = wa_item-vrkme.
+    wa_item_final-mwsbp = wa_item-mwsbp.
+*    wa_item_final-totrate = wa_item-fkimg * wa_item-netwr.
+    lv_curr_unit = wa_item-waerk.
+    CLEAR wa_prcd.
+    READ TABLE it_prcd INTO wa_prcd WITH KEY kposn = wa_item-posnr kschl = 'ZPR0'.
+    IF sy-subrc = 0.
+      wa_item_final-totrate = wa_prcd-kbetr.
+      wa_item_final-netwr = wa_prcd-kwert.
+    ENDIF.
+    CLEAR wa_prcd.
+    READ TABLE it_prcd INTO wa_prcd WITH KEY kposn = wa_item-posnr kschl = 'MWST'.
+    IF sy-subrc = 0.
+      wa_item_final-vat_value = wa_prcd-kwert.
+      wa_item_final-vat_percent = wa_prcd-kbetr.
+*  wa_item_final-vat_percent = wa_item_final-vat_percent / 1000000000.
+    ENDIF.
+    APPEND wa_item_final TO it_item_final.
+    CLEAR wa_item_final.
+  ENDLOOP.
+  SORT it_item_final BY posnr.
+  DELETE ADJACENT DUPLICATES FROM it_item_final COMPARING posnr .
+  LOOP AT it_item_final INTO wa_item_final.
+    lv_total = lv_total +  wa_item_final-netwr.
+    lv_vat = lv_vat + wa_item_final-vat_value.
+  ENDLOOP.
+ENDIF.
+
+
+***********************************************************************************
+IF it_vbrk IS NOT INITIAL.
+  LOOP AT it_vbrk INTO wa_vbrk.
+*
+    CLEAR wa_prcd.
+    READ TABLE it_prcd INTO wa_prcd WITH KEY knumv = wa_vbrk-knumv  kschl = 'Z004' .
+    IF sy-subrc = 0.
+      wa_cal-discount = wa_cal-discount + wa_prcd-kwert.
+    ENDIF.
+*
+    CLEAR wa_prcd.
+    READ TABLE it_prcd INTO wa_prcd WITH KEY knumv = wa_vbrk-knumv  kschl =   'Z005' .
+    IF sy-subrc = 0.
+      wa_cal-discount = wa_cal-discount + wa_prcd-kwert.
+    ENDIF.
+*
+    CLEAR wa_prcd.
+    READ TABLE it_prcd INTO wa_prcd WITH KEY knumv = wa_item-knumv  kschl =  'Z007'.
+    IF sy-subrc = 0.
+      wa_cal-discount = wa_cal-discount + wa_prcd-kwert.
+    ENDIF.
+*
+    CLEAR wa_prcd.
+    READ TABLE it_prcd INTO wa_prcd WITH KEY knumv = wa_item-knumv  kschl = 'ZHD0'.
+    IF sy-subrc = 0.
+      wa_cal-othercharges = wa_cal-othercharges + wa_prcd-kwert.
+    ENDIF.
+    lv_final = lv_final + wa_cal-discount + wa_cal-othercharges + lv_total + lv_vat .
+    APPEND wa_cal TO it_cal.
+    CLEAR wa_cal .
+  ENDLOOP.
+ENDIF.
+
+
+*
+
+CALL FUNCTION 'FP_JOB_OPEN'
+  CHANGING
+    ie_outputparams = fp_outputparams
+  EXCEPTIONS
+    cancel          = 1
+    usage_error     = 2
+    system_error    = 3
+    internal_error  = 4
+    OTHERS          = 5.
+IF sy-subrc <> 0.
+* Implement suitable error handling here
+ENDIF.
+*
+try.
+CALL FUNCTION 'FP_FUNCTION_MODULE_NAME'
+  EXPORTING
+    i_name     = fp_name
+  IMPORTING
+    e_funcname = fm_name
+*   E_INTERFACE_TYPE           =
+*   EV_FUNCNAME_INBOUND        =
+  .
+catch cx_fp_api.
+ENDTRY.
+CALL FUNCTION fm_name "'/1BCDWB/SM00000097'
+  EXPORTING
+    /1bcdwb/docparams = fp_docparams
+    lv_total          = lv_total
+    lv_vat            = lv_vat
+    lv_final          = lv_final
+    lv_curr_unit      = lv_curr_unit
+    it_header         = it_header
+    it_item           = it_item
+    it_header_date    = it_header_date
+    it_del            = it_del
+    it_item_final     = it_item_final
+    it_cal            = it_cal
+    it_sp_temp        = it_sp_temp
+* IMPORTING
+*   /1BCDWB/FORMOUTPUT       =
+  EXCEPTIONS
+    usage_error       = 1
+    system_error      = 2
+    internal_error    = 3
+    OTHERS            = 4.
+IF sy-subrc <> 0.
+* Implement suitable error handling here
+ENDIF.
+
+
+CALL FUNCTION 'FP_JOB_CLOSE'
+  IMPORTING
+    e_result       = fp_output
+  EXCEPTIONS
+    usage_error    = 1
+    system_error   = 2
+    internal_error = 3
+    OTHERS         = 4.
+IF sy-subrc <> 0.
+* Implement suitable error handling here
+ENDIF.
+*
+
+ENDFORM.

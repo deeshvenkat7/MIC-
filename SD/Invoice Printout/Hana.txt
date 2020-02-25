@@ -1,0 +1,179 @@
+CLASS zcl_sd_invoice_printout DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+    INTERFACES if_amdp_marker_hdb.
+
+
+    TYPES : BEGIN OF ty_prcd,
+              kherk TYPE kherk,
+              knumv TYPE knumv,
+              kbetr TYPE kbetr,
+              kwert TYPE kwert,
+              kschl TYPE kschl,
+              kposn TYPE kposn,
+            END OF ty_prcd.
+
+    TYPES : BEGIN OF ty_vbrk,
+              knumv TYPE knumv,
+            END OF ty_vbrk.
+    TYPES: it_header      TYPE TABLE OF zinvoice_header,
+           it_item        TYPE TABLE OF zinvoice_item,
+           it_header_date TYPE TABLE OF zinvoice_header_date,
+           it_prcd        TYPE TABLE OF ty_prcd,
+           it_del         TYPE TABLE OF zst_del_date,
+           it_vbrk        TYPE TABLE OF ty_vbrk.
+
+
+
+
+    CLASS-METHODS get_it_tab
+      IMPORTING
+        VALUE(i_mandt)        TYPE sy-mandt
+        VALUE(p_vbeln)        TYPE vbrp-vbeln
+      EXPORTING
+        VALUE(it_header)      TYPE it_header
+        VALUE(it_item)        TYPE it_item
+        VALUE(it_header_date) TYPE it_header_date
+        VALUE(it_prcd)        TYPE it_prcd
+        VALUE(it_vbrk)        TYPE it_vbrk
+        VALUE(it_del)         TYPE it_del.
+
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+ENDCLASS.
+
+
+
+CLASS zcl_sd_invoice_printout IMPLEMENTATION.
+
+  METHOD get_it_tab BY DATABASE PROCEDURE FOR HDB
+                      LANGUAGE SQLSCRIPT
+                       OPTIONS READ-ONLY
+                       USING vbrk kna1 adrc vbrp vbrk vbfa prcd_elements vbak vbkd t005t likp.
+*"a=vbrk "b=kna1  "c=adrc
+    IT_header = select a.kunrg,
+                       a.fkdat,
+                       b.adrnr,
+                       ltrim(b.kunnr,0) as kunnr,
+                       B.STCEG,
+                       c.name1 || char(32) || c.name2 as name ,
+                       c.street,
+                       c.city1,
+                       c.po_box,
+                       c.house_num1,
+                       c.tel_extens,
+                       c.fax_extens,
+                       c.post_code1,
+                       c.country,
+                       c.tel_number,
+                       c.fax_number,
+                       d.landx
+                       from vbrk as a
+
+                       inner join kna1 as b
+                       on b.mandt = :i_mandt
+                       and b.kunnr = a.kunrg
+
+                       inner join adrc as c
+                       on c.client = :i_mandt
+                       and c.addrnumber = b.adrnr
+*
+                       inner join t005t as d
+                       on d.land1 = c.country
+                       and d.mandt = :i_mandt
+                       and d.spras = 'E'
+
+
+                       where a.vbeln = :p_vbeln
+                      ;
+
+
+   it_item = select a.vbeln,
+                    LTRIM (a.posnr,0) AS posnr,
+                    LTRIM (a.matnr,0) AS MATNR,
+                    a.arktx,
+                    a.fkimg,
+                    a.vrkme,
+                    a.netwr,
+                    a.mwsbp,
+                    b.knumv,
+                    c.kposn,
+                    c.kschl,
+                    c.kbetr,
+                    c.kherk,
+                    c.kwert,
+                    c.waerk
+                    from vbrp as a
+                    INNER join vbrk as b
+                    on b.mandt = :i_mandt
+                    and b.vbeln = a.vbeln
+
+                    INNER join prcd_elements as c
+                    on c.client = :i_mandt
+                    and c.KPOSN =  a.posnr
+                    and c.knumv = b.knumv
+
+                    where a.vbeln = :p_vbeln;
+
+     IT_PRCD = SELECT DISTINCT
+                    a.kherk,
+                    a.knumv,
+                    a.kbetr,
+                    a.kwert,
+                    a.kschl,
+                    ltrim(a.kposn,0) as kposn
+                    from prcd_elements as a
+
+                    inner join :it_item as b
+                    on b.knumv = a.knumv
+                    where a.client = :i_mandt;
+
+
+      it_header_date = select DISTINCT
+                     a.vbelv,
+                     a.vbeln,
+                     b.erdat,
+                     c.bstkd,
+                     c.bstdk
+                             from vbfa as a
+                             left outer join vbak as b
+                             on b.mandt = :i_mandt
+                             and b.vbeln = a.vbelv
+                             and a.vbtyp_n ='M'
+
+                             left outer join vbkd as c
+                             on c.vbeln = a.vbelv
+                             and c.mandt = :i_mandt
+                             and a.vbtyp_n ='M'
+
+
+                             where a.vbeln = :p_vbeln
+                             and a.mandt =:i_mandt
+                             and a.vbtyp_v = 'C' ;
+*
+                   it_del = select a.vbelv,
+                                   b.vbeln,
+                                   c.erdat
+                             from :it_header_date as a
+
+                               inner join vbfa as b
+                               on b.vbelv = a.vbelv
+                               and  b.vbtyp_n = 'J'
+                               and b.mandt = :i_mandt
+
+                             left outer join likp as c
+                             on c.vbeln = b.vbeln
+                             and c.mandt = :i_mandt
+                             ;
+
+                     it_vbrk = select a.knumv
+                          from vbrk as a
+                          where a.vbeln = :p_vbeln
+                          and a.mandt = :i_mandt;
+
+
+  ENDMETHOD.
+ENDCLASS.
